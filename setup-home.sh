@@ -96,7 +96,8 @@ start_tailscale() {
         open -a Tailscale
         sleep 2
     elif [[ "$os" == "linux" ]]; then
-        sudo tailscale up 2>/dev/null || true
+        echo "If prompted, open the URL in your browser to authenticate."
+        sudo tailscale up --timeout=10s 2>&1 || true
     fi
     
     # Re-check state
