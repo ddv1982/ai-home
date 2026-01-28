@@ -16,7 +16,11 @@ Use AI CLIs (Claude Code, Aider, etc.) from your work laptop via SSH to your hom
 curl -fsSL https://raw.githubusercontent.com/ddv1982/remote-ai-bridge/main/setup-home.sh | bash
 ```
 
-Installs: Tailscale, tmux, Claude Code, enables SSH. If Tailscale needs login, complete it via menu bar, then run `tailscale ip` to get your hostname.
+Installs: Tailscale, tmux, Claude Code, enables SSH.
+
+**After setup:**
+- Log into Tailscale (macOS: menu bar icon, Linux: URL shown in terminal)
+- Get your Tailscale IP: `tailscale ip` (e.g., `100.x.x.x`)
 
 ### 2. Work Laptop (macOS/Linux/WSL)
 
@@ -24,7 +28,12 @@ Installs: Tailscale, tmux, Claude Code, enables SSH. If Tailscale needs login, c
 curl -fsSL https://raw.githubusercontent.com/ddv1982/remote-ai-bridge/main/setup-work.sh | bash
 ```
 
-Enter your home machine's Tailscale hostname when prompted.
+The script will:
+- Install Tailscale (log in with same account as home)
+- Generate SSH key
+- Ask for your home machine's **Tailscale IP or hostname**
+- Copy SSH key to home machine
+- Configure SSH and shell commands
 
 ### 3. Use It
 
@@ -62,11 +71,63 @@ cat file.py | ai-explain  # Explain code
 
 ## Troubleshooting
 
+### Check Tailscale connection
+
 ```bash
-tailscale status          # Check connection
-ssh -v home               # Debug SSH
-ssh home 'tmux ls'        # List sessions
+tailscale status
 ```
+
+Both machines should show as connected. If not:
+- macOS: Click Tailscale icon in menu bar and log in
+- Linux: Run `sudo tailscale up` and open the URL shown
+
+### SSH hangs or times out
+
+1. Verify Tailscale connectivity:
+   ```bash
+   tailscale ping <home-machine-name>
+   ```
+
+2. Check SSH config exists:
+   ```bash
+   cat ~/.ssh/config | grep -A5 "Host home"
+   ```
+
+3. If missing, add manually (on work laptop):
+   ```bash
+   cat >> ~/.ssh/config << 'EOF'
+
+   # Remote AI Bridge
+   Host home
+       HostName <TAILSCALE-IP>
+       User <USERNAME>
+       IdentityFile ~/.ssh/id_ed25519
+       ServerAliveInterval 60
+       ServerAliveCountMax 3
+   EOF
+   ```
+   Replace `<TAILSCALE-IP>` with output of `tailscale ip` on home machine.
+
+### SSH asks for password
+
+The SSH key wasn't copied. Run on work laptop:
+```bash
+ssh-copy-id <username>@<tailscale-ip>
+```
+
+Or manually copy `~/.ssh/id_ed25519.pub` content to `~/.ssh/authorized_keys` on home.
+
+### Linux: Tailscale auth
+
+On Linux, `sudo tailscale up` shows an auth URL. Open it in your browser to log in.
+
+### Test SSH directly
+
+```bash
+ssh -v <username>@<tailscale-ip>
+```
+
+The `-v` flag shows where the connection fails.
 
 ## License
 
