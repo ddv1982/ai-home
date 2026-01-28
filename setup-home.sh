@@ -55,28 +55,34 @@ install_tailscale() {
 }
 
 start_tailscale() {
-    print_step "Starting Tailscale"
-    local os
+    print_step "Checking Tailscale"
+    local os state
     os=$(detect_os)
     
-    if [[ "$os" == "macos" ]]; then
-        [[ -d "/Applications/Tailscale.app" ]] && open -a Tailscale
-        echo "Open Tailscale from menu bar and log in."
-    else
-        sudo tailscale up 2>/dev/null || echo "Run: sudo tailscale up"
-    fi
+    # Check current state via BackendState
+    state=$(tailscale status --json 2>/dev/null | grep -o '"BackendState":"[^"]*"' | cut -d'"' -f4)
     
-    if [[ -t 0 ]]; then
-        read -rp "Press Enter when Tailscale is connected..."
-    else
-        echo "Waiting 5s for Tailscale..."
-        sleep 5
-    fi
-    
-    if tailscale status &>/dev/null; then
+    if [[ "$state" == "Running" ]]; then
         print_success "Tailscale connected"
+        return 0
+    fi
+    
+    # Open app on macOS if not running
+    if [[ "$os" == "macos" ]] && [[ -d "/Applications/Tailscale.app" ]]; then
+        open -a Tailscale
+    elif [[ "$os" == "linux" ]]; then
+        sudo tailscale up 2>/dev/null || true
+    fi
+    
+    # Re-check state
+    state=$(tailscale status --json 2>/dev/null | grep -o '"BackendState":"[^"]*"' | cut -d'"' -f4)
+    
+    if [[ "$state" == "Running" ]]; then
+        print_success "Tailscale connected"
+    elif [[ "$state" == "NeedsLogin" ]]; then
+        print_warning "Tailscale needs login - complete via menu bar after setup"
     else
-        print_warning "Tailscale may not be connected"
+        print_warning "Tailscale not connected - log in via menu bar after setup"
     fi
 }
 
@@ -136,17 +142,24 @@ enable_ssh() {
 }
 
 show_completion() {
-    local hostname ip
-    hostname=$(tailscale status --json 2>/dev/null | grep -o '"DNSName":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/\.$//')
-    ip=$(tailscale ip -4 2>/dev/null)
+    local hostname ip state
+    state=$(tailscale status --json 2>/dev/null | grep -o '"BackendState":"[^"]*"' | cut -d'"' -f4)
     
     echo ""
     echo "════════════════════════════════════════════════════════════"
     echo "  HOME MACHINE READY"
     echo "════════════════════════════════════════════════════════════"
     echo ""
-    [[ -n "$hostname" ]] && echo "  Tailscale hostname: $hostname"
-    [[ -n "$ip" ]] && echo "  Tailscale IP: $ip"
+    
+    if [[ "$state" == "Running" ]]; then
+        hostname=$(tailscale status --json 2>/dev/null | grep -o '"DNSName":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/\.$//')
+        ip=$(tailscale ip -4 2>/dev/null)
+        [[ -n "$hostname" ]] && echo "  Tailscale hostname: $hostname"
+        [[ -n "$ip" ]] && echo "  Tailscale IP: $ip"
+    else
+        echo "  Tailscale: Log in via menu bar, then run: tailscale ip"
+    fi
+    
     echo "  Username: $USER"
     echo ""
     echo "  Next: Run setup-work.sh on your work laptop"
