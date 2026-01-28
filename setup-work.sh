@@ -134,18 +134,22 @@ get_home_info() {
 }
 
 copy_ssh_key() {
-    print_step "Copying SSH key to home machine"
-    echo "Enter your home machine password when prompted."
+    print_step "SSH Key Setup"
     
-    if ssh-copy-id -o StrictHostKeyChecking=accept-new "$HOME_USER@$HOME_HOST" 2>/dev/null; then
-        print_success "SSH key copied"
-    else
-        print_warning "Auto-copy failed. Manually add this to ~/.ssh/authorized_keys on home:"
-        echo ""
-        cat "$HOME/.ssh/id_ed25519.pub"
-        echo ""
-        read -rp "Press Enter when done..." < /dev/tty
-    fi
+    echo ""
+    echo "Your public key:"
+    echo ""
+    cat "$HOME/.ssh/id_ed25519.pub"
+    echo ""
+    echo "Add this key to your home machine. Options:"
+    echo ""
+    echo "  Option 1: Run this on your WORK laptop (after this script):"
+    echo "    ssh-copy-id $HOME_USER@$HOME_HOST"
+    echo ""
+    echo "  Option 2: On your HOME machine, add the key above to:"
+    echo "    ~/.ssh/authorized_keys"
+    echo ""
+    read -rp "Press Enter when done..." < /dev/tty
 }
 
 setup_ssh_config() {
