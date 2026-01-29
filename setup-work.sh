@@ -143,8 +143,9 @@ setup_ssh_config() {
     
     if grep -q "^Host home$" "$SSH_CONFIG" 2>/dev/null; then
         echo ""
-        echo "Existing 'Host home' config found:"
-        awk '/^Host home$/,/^Host / { if (/^Host / && !/^Host home$/) exit; print "  " $0 }' "$SSH_CONFIG"
+        echo "Existing 'Host home' config:"
+        echo "  hostname: $(ssh -G home 2>/dev/null | grep '^hostname ' | cut -d' ' -f2)"
+        echo "  user: $(ssh -G home 2>/dev/null | grep '^user ' | cut -d' ' -f2)"
         echo ""
         read -rp "Update with new values? [y/N]: " confirm < /dev/tty
         if [[ ! "$confirm" =~ ^[Yy] ]]; then
