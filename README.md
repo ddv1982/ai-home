@@ -44,11 +44,12 @@ After the script completes, copy your SSH key:
 ssh-copy-id <username>@<tailscale-ip>
 ```
 
-Then reload your shell and connect:
+Then connect (open a new terminal or reload your shell):
 ```bash
-source ~/.bashrc  # or ~/.zshrc on macOS
-ai                # Connect to home machine
+ai    # Connect to persistent tmux session on home machine
 ```
+
+(If `ai` isn't found, run `source ~/.bashrc` or open a new terminal)
 
 ## Commands
 
@@ -69,11 +70,17 @@ git diff | ai-review      # Review changes
 cat file.py | ai-explain  # Explain code
 ```
 
+## Why tmux?
+
+The `ai` command uses tmux to create a persistent session. If your SSH connection drops (network issues, laptop sleeps), your Claude session keeps running on your home machine. Just run `ai` again to reconnect.
+
+Plain `ssh home` works too, but you'd lose any running sessions on disconnect.
+
 ## tmux Keys
 
 | Key | Action |
 |-----|--------|
-| `Ctrl+B, D` | Detach |
+| `Ctrl+B, D` | Detach (leave session running) |
 | `Ctrl+B, C` | New window |
 | `Ctrl+B, N/P` | Next/prev window |
 
