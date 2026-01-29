@@ -134,22 +134,8 @@ get_home_info() {
 }
 
 copy_ssh_key() {
-    print_step "SSH Key Setup"
-    
-    echo ""
-    echo "Your public key:"
-    echo ""
-    cat "$HOME/.ssh/id_ed25519.pub"
-    echo ""
-    echo "Add this key to your home machine. Options:"
-    echo ""
-    echo "  Option 1: Run this on your WORK laptop (after this script):"
-    echo "    ssh-copy-id $HOME_USER@$HOME_HOST"
-    echo ""
-    echo "  Option 2: On your HOME machine, add the key above to:"
-    echo "    ~/.ssh/authorized_keys"
-    echo ""
-    read -rp "Press Enter when done..." < /dev/tty
+    print_step "SSH Key"
+    print_success "Key ready: ~/.ssh/id_ed25519.pub"
 }
 
 setup_ssh_config() {
@@ -199,8 +185,8 @@ EOF
 test_connection() {
     print_step "Testing connection"
     
-    if ssh -o BatchMode=yes -o ConnectTimeout=10 home "echo ok" &>/dev/null; then
-        print_success "SSH works"
+    if ssh -o BatchMode=yes -o ConnectTimeout=5 home "echo ok" &>/dev/null; then
+        print_success "SSH connection works"
         if ssh home "command -v tmux" &>/dev/null; then
             print_success "tmux available"
         else
@@ -212,7 +198,7 @@ test_connection() {
             print_warning "claude missing on home"
         fi
     else
-        print_error "SSH failed - check Tailscale and try: ssh -v $HOME_USER@$HOME_HOST"
+        print_warning "SSH key not yet copied to home machine"
     fi
 }
 
@@ -224,7 +210,17 @@ show_completion() {
     echo "  SETUP COMPLETE"
     echo "════════════════════════════════════════════════════════════"
     echo ""
-    echo "  source $rc && ai"
+    
+    # Check if SSH key needs to be copied
+    if ! ssh -o BatchMode=yes -o ConnectTimeout=5 home "echo ok" &>/dev/null; then
+        echo "  Step 1: Copy your SSH key to home machine:"
+        echo "    ssh-copy-id $HOME_USER@$HOME_HOST"
+        echo ""
+        echo "  Step 2: Connect:"
+        echo "    source $rc && ai"
+    else
+        echo "  source $rc && ai"
+    fi
     echo ""
     echo "  Commands: ai, ai-run, ai-pipe, ai-review, ai-explain"
     echo ""
