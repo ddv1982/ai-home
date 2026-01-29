@@ -1,6 +1,8 @@
 # Remote AI Bridge
 
-Use AI CLIs (Claude Code, Aider, etc.) from your work laptop via SSH to your home machine over Tailscale.
+> Access AI CLI tools on your home machine from anywhere via SSH over Tailscale.
+
+Use AI CLIs (Claude Code, Aider, etc.) from any device via SSH to your home machine over Tailscale.
 
 ## Why?
 
