@@ -22,18 +22,6 @@ confirm() {
 
 command_exists() { command -v "$1" &>/dev/null; }
 
-tailscale_cmd() {
-  if command_exists tailscale; then
-    echo "tailscale"
-    return 0
-  fi
-  if [[ -x "/Applications/Tailscale.app/Contents/MacOS/Tailscale" ]]; then
-    echo "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
-    return 0
-  fi
-  return 1
-}
-
 # Detect shell config
 detect_shell_rc() {
   if [[ -n "${ZSH_VERSION:-}" ]] || [[ "${SHELL:-}" == *zsh* ]]; then
@@ -105,20 +93,6 @@ install_tmux() {
   print_success "tmux installed"
 }
 
-enable_tailscale_ssh() {
-  print_step "Enabling Tailscale SSH"
-  local ts_cmd
-  if ! ts_cmd=$(tailscale_cmd); then
-    print_warning "Tailscale CLI not found. Install it or add it to PATH, then run: sudo tailscale set --ssh"
-    return 0
-  fi
-  if [[ "$(uname -s)" == "Darwin" ]] && [[ -d "/Applications/Tailscale.app" ]]; then
-    print_warning "macOS requires the open-source Tailscale app (not App Store) for SSH server"
-  fi
-  sudo "$ts_cmd" set --ssh
-  print_success "Tailscale SSH enabled"
-}
-
 install_shell_function() {
   touch "$RC_FILE"
   if grep -q "^tailmux()" "$RC_FILE" 2>/dev/null; then
@@ -153,12 +127,6 @@ uninstall_shell_function() {
     sed -i '/^tailmux() {/d' "$RC_FILE"
   fi
   print_success "tailmux function removed from $RC_FILE"
-}
-
-disable_tailscale_ssh() {
-  print_step "Disabling Tailscale SSH"
-  sudo tailscale set --ssh=false
-  print_success "Tailscale SSH disabled"
 }
 
 uninstall_tmux() {
@@ -201,10 +169,6 @@ do_install() {
     install_tmux
   fi
 
-  if confirm "Enable Tailscale SSH server? [Y/n]" "y"; then
-    enable_tailscale_ssh
-  fi
-
   if confirm "Add tailmux shell function? [Y/n]" "y"; then
     install_shell_function
   fi
@@ -213,8 +177,9 @@ do_install() {
   print_success "Setup complete!"
   echo ""
   echo "Next steps:"
-  echo "  1. Run: source $RC_FILE"
-  echo "  2. Connect: tailmux <hostname>"
+  echo "  1. Ensure SSH is enabled on the destination (macOS: Remote Login)"
+  echo "  2. Run: source $RC_FILE"
+  echo "  3. Connect: tailmux <hostname>"
   echo ""
 }
 
@@ -226,10 +191,6 @@ do_uninstall() {
 
   if confirm "Remove tailmux shell function? [Y/n]" "y"; then
     uninstall_shell_function
-  fi
-
-  if confirm "Disable Tailscale SSH server? [y/N]" "n"; then
-    disable_tailscale_ssh
   fi
 
   if confirm "Uninstall tmux? [y/N]" "n"; then
