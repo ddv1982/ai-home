@@ -160,6 +160,8 @@ do_install() {
   echo "tailmux setup"
   echo "============="
   echo ""
+  local os_name
+  os_name="$(uname -s)"
 
   if confirm "Install Tailscale? [Y/n]" "y"; then
     install_tailscale
@@ -178,7 +180,11 @@ do_install() {
   echo ""
   echo "Next steps:"
   echo "  1. Ensure SSH is enabled on the destination (macOS: Remote Login)"
-  echo "  2. Run: source $RC_FILE"
+  if [[ "$os_name" == "Darwin" ]]; then
+    echo "  2. Open a new Terminal window, or run: source $RC_FILE"
+  else
+    echo "  2. Open a new terminal, or run: source $RC_FILE"
+  fi
   echo "  3. Connect: tailmux <hostname>"
   echo ""
 }
