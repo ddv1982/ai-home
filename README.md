@@ -54,3 +54,4 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddv1982/tailmux/main/setup.s
 ## Notes
 
 - Your tailnet ACLs must allow SSH (port 22) to the destination
+- You can set simpler machine names in the [Tailscale admin console](https://login.tailscale.com/admin/machines) by clicking on a device and editing its name
