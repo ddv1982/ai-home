@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Trap for clean exit on interrupt
+trap 'echo ""; echo "Setup interrupted."; exit 130' INT TERM
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m'
 
-print_step() { echo -e "\n${GREEN}→${NC} $1"; }
-print_success() { echo -e "${GREEN}✓${NC} $1"; }
-print_warning() { echo -e "${YELLOW}⚠${NC} $1"; }
-print_error() { echo -e "${RED}✗${NC} $1" >&2; }
+print_step() { printf "\n%b→%b %s\n" "$GREEN" "$NC" "$1"; }
+print_success() { printf "%b✓%b %s\n" "$GREEN" "$NC" "$1"; }
+print_warning() { printf "%b⚠%b %s\n" "$YELLOW" "$NC" "$1"; }
+print_error() { printf "%b✗%b %s\n" "$RED" "$NC" "$1" >&2; }
 
 confirm() {
   local prompt=$1 default=${2:-n}
@@ -45,8 +48,32 @@ TAILMUX_FUNC='tailmux() { local host="${1:?Usage: tailmux <host>}"; ssh -t "$hos
 
 # --- Install Functions ---
 
+install_homebrew() {
+  if command_exists brew; then
+    print_success "Homebrew already installed"
+    return 0
+  fi
+
+  print_step "Installing Homebrew"
+  print_warning "This will download and run the official Homebrew install script"
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  
+  # Add Homebrew to PATH for this session
+  if [[ -f "/opt/homebrew/bin/brew" ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -f "/usr/local/bin/brew" ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  fi
+  
+  if ! command_exists brew; then
+    print_error "Homebrew installation failed"
+    return 1
+  fi
+  print_success "Homebrew installed"
+}
+
 install_tailscale() {
-  if tailscale_cmd >/dev/null; then
+  if command_exists tailscale; then
     print_success "Tailscale already installed"
     return 0
   fi
@@ -55,6 +82,8 @@ install_tailscale() {
   if [[ "$(uname -s)" == "Darwin" ]]; then
     if command_exists brew; then
       brew install --cask tailscale
+      print_success "Tailscale installed"
+      print_warning "Open Tailscale from Applications to log in and connect to your tailnet"
     else
       print_warning "Install Tailscale manually: https://tailscale.com/download"
       return 0
@@ -64,9 +93,10 @@ install_tailscale() {
       print_warning "curl not found. Install Tailscale manually: https://tailscale.com/download"
       return 0
     fi
+    print_warning "This will download and run the official Tailscale install script"
     curl -fsSL https://tailscale.com/install.sh | sh
+    print_success "Tailscale installed"
   fi
-  print_success "Tailscale installed"
 }
 
 install_tmux() {
@@ -118,11 +148,13 @@ uninstall_shell_function() {
   fi
 
   print_step "Removing tailmux function from $RC_FILE"
-  # Remove the comment and function (works on both macOS and Linux)
+  # Remove the comment, function, and preceding blank line (works on both macOS and Linux)
   if [[ "$(uname -s)" == "Darwin" ]]; then
+    sed -i '' '/^$/N;/\n# tailmux - tmux over Tailscale$/d' "$RC_FILE"
     sed -i '' '/^# tailmux - tmux over Tailscale$/d' "$RC_FILE"
     sed -i '' '/^tailmux() {/d' "$RC_FILE"
   else
+    sed -i '/^$/N;/\n# tailmux - tmux over Tailscale$/d' "$RC_FILE"
     sed -i '/^# tailmux - tmux over Tailscale$/d' "$RC_FILE"
     sed -i '/^tailmux() {/d' "$RC_FILE"
   fi
@@ -153,6 +185,35 @@ uninstall_tmux() {
   print_success "tmux uninstalled"
 }
 
+uninstall_tailscale() {
+  if ! command_exists tailscale; then
+    print_warning "Tailscale not installed"
+    return 0
+  fi
+
+  print_step "Uninstalling Tailscale"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    if command_exists brew; then
+      brew uninstall --cask tailscale
+    else
+      print_warning "Uninstall Tailscale manually from Applications"
+      return 0
+    fi
+  elif command_exists apt-get; then
+    sudo apt-get remove -y tailscale
+  elif command_exists dnf; then
+    sudo dnf remove -y tailscale
+  elif command_exists yum; then
+    sudo yum remove -y tailscale
+  elif command_exists pacman; then
+    sudo pacman -R --noconfirm tailscale
+  else
+    print_warning "Uninstall Tailscale manually"
+    return 1
+  fi
+  print_success "Tailscale uninstalled"
+}
+
 # --- Main ---
 
 do_install() {
@@ -162,6 +223,12 @@ do_install() {
   echo ""
   local os_name
   os_name="$(uname -s)"
+
+  if [[ "$os_name" == "Darwin" ]] && ! command_exists brew; then
+    if confirm "Install Homebrew (required for Tailscale/tmux on macOS)? [Y/n]" "y"; then
+      install_homebrew
+    fi
+  fi
 
   if confirm "Install Tailscale? [Y/n]" "y"; then
     install_tailscale
@@ -203,6 +270,10 @@ do_uninstall() {
     uninstall_tmux
   fi
 
+  if confirm "Uninstall Tailscale? [y/N]" "n"; then
+    uninstall_tailscale
+  fi
+
   echo ""
   print_success "Uninstall complete!"
   echo "Run: source $RC_FILE"
@@ -210,21 +281,23 @@ do_uninstall() {
 }
 
 show_menu() {
-  echo ""
-  echo "tailmux"
-  echo "======="
-  echo ""
-  echo "1) Install"
-  echo "2) Uninstall"
-  echo "3) Exit"
-  echo ""
-  read -r -p "Choose [1-3]: " choice
-  case "$choice" in
-    1) do_install ;;
-    2) do_uninstall ;;
-    3) exit 0 ;;
-    *) print_error "Invalid choice"; show_menu ;;
-  esac
+  while true; do
+    echo ""
+    echo "tailmux"
+    echo "======="
+    echo ""
+    echo "1) Install"
+    echo "2) Uninstall"
+    echo "3) Exit"
+    echo ""
+    read -r -p "Choose [1-3]: " choice
+    case "$choice" in
+      1) do_install; break ;;
+      2) do_uninstall; break ;;
+      3) exit 0 ;;
+      *) print_error "Invalid choice" ;;
+    esac
+  done
 }
 
 # Handle arguments or show menu

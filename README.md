@@ -9,6 +9,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddv1982/tailmux/main/setup.s
 ```
 
 This will prompt you to:
+- Install Homebrew (macOS only, if not already installed)
 - Install Tailscale
 - Install tmux
 - Add the `tailmux` command to your shell
