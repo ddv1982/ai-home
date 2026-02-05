@@ -224,20 +224,48 @@ do_install() {
   local os_name
   os_name="$(uname -s)"
 
+  local needs_install=false
+  local install_list=""
+
   if [[ "$os_name" == "Darwin" ]] && ! command_exists brew; then
-    if confirm "Install Homebrew (required for Tailscale/tmux on macOS)? [Y/n]" "y"; then
-      install_homebrew
-    fi
+    install_list+="  - Homebrew (package manager for macOS)\n"
+    needs_install=true
+  fi
+  if ! command_exists tailscale; then
+    install_list+="  - Tailscale (VPN/mesh network)\n"
+    needs_install=true
+  fi
+  if ! command_exists tmux; then
+    install_list+="  - tmux (terminal multiplexer)\n"
+    needs_install=true
+  fi
+  if ! grep -q "^tailmux()" "$RC_FILE" 2>/dev/null; then
+    install_list+="  - tailmux shell function (added to $RC_FILE)\n"
+    needs_install=true
   fi
 
-  if confirm "Install Tailscale? [Y/n]" "y"; then
-    install_tailscale
+  if [[ "$needs_install" == false ]]; then
+    print_success "Everything is already installed!"
+    echo ""
+    echo "Usage: tailmux <hostname>"
+    return 0
   fi
 
-  if confirm "Install tmux? [Y/n]" "y"; then
-    install_tmux
+  echo "This will install:"
+  printf "%b" "$install_list"
+  echo ""
+
+  if ! confirm "Continue? [Y/n]" "y"; then
+    echo "Setup cancelled."
+    exit 0
   fi
 
+  if [[ "$os_name" == "Darwin" ]] && ! command_exists brew; then
+    install_homebrew
+  fi
+
+  install_tailscale
+  install_tmux
   install_shell_function
 
   echo ""
