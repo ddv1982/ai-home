@@ -1,0 +1,268 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+print_step() { echo -e "\n${GREEN}→${NC} $1"; }
+print_success() { echo -e "${GREEN}✓${NC} $1"; }
+print_warning() { echo -e "${YELLOW}⚠${NC} $1"; }
+print_error() { echo -e "${RED}✗${NC} $1" >&2; }
+
+confirm() {
+  local prompt=$1 default=${2:-n}
+  local reply
+  read -r -p "$prompt " reply
+  reply=${reply:-$default}
+  [[ "$reply" =~ ^[Yy]$ ]]
+}
+
+command_exists() { command -v "$1" &>/dev/null; }
+
+tailscale_cmd() {
+  if command_exists tailscale; then
+    echo "tailscale"
+    return 0
+  fi
+  if [[ -x "/Applications/Tailscale.app/Contents/MacOS/Tailscale" ]]; then
+    echo "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+    return 0
+  fi
+  return 1
+}
+
+# Detect shell config
+detect_shell_rc() {
+  if [[ -n "${ZSH_VERSION:-}" ]] || [[ "${SHELL:-}" == *zsh* ]]; then
+    echo "$HOME/.zshrc"
+    return 0
+  fi
+  if [[ -f "$HOME/.bashrc" ]]; then
+    echo "$HOME/.bashrc"
+    return 0
+  fi
+  if [[ -f "$HOME/.bash_profile" ]]; then
+    echo "$HOME/.bash_profile"
+    return 0
+  fi
+  echo "$HOME/.profile"
+}
+
+RC_FILE=$(detect_shell_rc)
+
+TAILMUX_FUNC='tailmux() { local host="${1:?Usage: tailmux <host>}"; ssh -t "$host" "PATH=\"/opt/homebrew/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:$PATH\"; if command -v tmux >/dev/null 2>&1; then tmux attach || tmux new; else echo \"tmux not found on remote\" >&2; exit 127; fi"; }'
+
+# --- Install Functions ---
+
+install_tailscale() {
+  if tailscale_cmd >/dev/null; then
+    print_success "Tailscale already installed"
+    return 0
+  fi
+
+  print_step "Installing Tailscale"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    if command_exists brew; then
+      brew install --cask tailscale
+    else
+      print_warning "Install Tailscale manually: https://tailscale.com/download"
+      return 0
+    fi
+  else
+    if ! command_exists curl; then
+      print_warning "curl not found. Install Tailscale manually: https://tailscale.com/download"
+      return 0
+    fi
+    curl -fsSL https://tailscale.com/install.sh | sh
+  fi
+  print_success "Tailscale installed"
+}
+
+install_tmux() {
+  if command_exists tmux; then
+    print_success "tmux already installed"
+    return 0
+  fi
+
+  print_step "Installing tmux"
+  if command_exists brew; then
+    brew install tmux
+  elif command_exists apt-get; then
+    sudo apt-get update -y && sudo apt-get install -y tmux
+  elif command_exists dnf; then
+    sudo dnf install -y tmux
+  elif command_exists yum; then
+    sudo yum install -y tmux
+  elif command_exists pacman; then
+    sudo pacman -S --noconfirm tmux
+  else
+    print_warning "Install tmux manually"
+    return 1
+  fi
+  print_success "tmux installed"
+}
+
+enable_tailscale_ssh() {
+  print_step "Enabling Tailscale SSH"
+  local ts_cmd
+  if ! ts_cmd=$(tailscale_cmd); then
+    print_warning "Tailscale CLI not found. Install it or add it to PATH, then run: sudo tailscale set --ssh"
+    return 0
+  fi
+  if [[ "$(uname -s)" == "Darwin" ]] && [[ -d "/Applications/Tailscale.app" ]]; then
+    print_warning "macOS requires the open-source Tailscale app (not App Store) for SSH server"
+  fi
+  sudo "$ts_cmd" set --ssh
+  print_success "Tailscale SSH enabled"
+}
+
+install_shell_function() {
+  touch "$RC_FILE"
+  if grep -q "^tailmux()" "$RC_FILE" 2>/dev/null; then
+    print_success "tailmux function already in $RC_FILE"
+    return 0
+  fi
+
+  print_step "Adding tailmux function to $RC_FILE"
+  {
+    echo ""
+    echo "# tailmux - tmux over Tailscale"
+    echo "$TAILMUX_FUNC"
+  } >> "$RC_FILE"
+  print_success "tailmux function added to $RC_FILE"
+}
+
+# --- Uninstall Functions ---
+
+uninstall_shell_function() {
+  if ! grep -q "^tailmux()" "$RC_FILE" 2>/dev/null; then
+    print_warning "tailmux function not found in $RC_FILE"
+    return 0
+  fi
+
+  print_step "Removing tailmux function from $RC_FILE"
+  # Remove the comment and function (works on both macOS and Linux)
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    sed -i '' '/^# tailmux - tmux over Tailscale$/d' "$RC_FILE"
+    sed -i '' '/^tailmux() {/d' "$RC_FILE"
+  else
+    sed -i '/^# tailmux - tmux over Tailscale$/d' "$RC_FILE"
+    sed -i '/^tailmux() {/d' "$RC_FILE"
+  fi
+  print_success "tailmux function removed from $RC_FILE"
+}
+
+disable_tailscale_ssh() {
+  print_step "Disabling Tailscale SSH"
+  sudo tailscale set --ssh=false
+  print_success "Tailscale SSH disabled"
+}
+
+uninstall_tmux() {
+  if ! command_exists tmux; then
+    print_warning "tmux not installed"
+    return 0
+  fi
+
+  print_step "Uninstalling tmux"
+  if command_exists brew; then
+    brew uninstall tmux
+  elif command_exists apt-get; then
+    sudo apt-get remove -y tmux
+  elif command_exists dnf; then
+    sudo dnf remove -y tmux
+  elif command_exists yum; then
+    sudo yum remove -y tmux
+  elif command_exists pacman; then
+    sudo pacman -R --noconfirm tmux
+  else
+    print_warning "Uninstall tmux manually"
+    return 1
+  fi
+  print_success "tmux uninstalled"
+}
+
+# --- Main ---
+
+do_install() {
+  echo ""
+  echo "tailmux setup"
+  echo "============="
+  echo ""
+
+  if confirm "Install Tailscale? [Y/n]" "y"; then
+    install_tailscale
+  fi
+
+  if confirm "Install tmux? [Y/n]" "y"; then
+    install_tmux
+  fi
+
+  if confirm "Enable Tailscale SSH server? [Y/n]" "y"; then
+    enable_tailscale_ssh
+  fi
+
+  if confirm "Add tailmux shell function? [Y/n]" "y"; then
+    install_shell_function
+  fi
+
+  echo ""
+  print_success "Setup complete!"
+  echo ""
+  echo "Next steps:"
+  echo "  1. Run: source $RC_FILE"
+  echo "  2. Connect: tailmux <hostname>"
+  echo ""
+}
+
+do_uninstall() {
+  echo ""
+  echo "tailmux uninstall"
+  echo "================="
+  echo ""
+
+  if confirm "Remove tailmux shell function? [Y/n]" "y"; then
+    uninstall_shell_function
+  fi
+
+  if confirm "Disable Tailscale SSH server? [y/N]" "n"; then
+    disable_tailscale_ssh
+  fi
+
+  if confirm "Uninstall tmux? [y/N]" "n"; then
+    uninstall_tmux
+  fi
+
+  echo ""
+  print_success "Uninstall complete!"
+  echo "Run: source $RC_FILE"
+  echo ""
+}
+
+show_menu() {
+  echo ""
+  echo "tailmux"
+  echo "======="
+  echo ""
+  echo "1) Install"
+  echo "2) Uninstall"
+  echo "3) Exit"
+  echo ""
+  read -r -p "Choose [1-3]: " choice
+  case "$choice" in
+    1) do_install ;;
+    2) do_uninstall ;;
+    3) exit 0 ;;
+    *) print_error "Invalid choice"; show_menu ;;
+  esac
+}
+
+# Handle arguments or show menu
+case "${1:-}" in
+  install) do_install ;;
+  uninstall) do_uninstall ;;
+  *) show_menu ;;
+esac
